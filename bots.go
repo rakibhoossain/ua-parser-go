@@ -14,7 +14,7 @@ var (
 	aiCrawlersRegex = regexp.MustCompile(`(?i)(GPTBot|OAI-SearchBot|ClaudeBot|Claude-SearchBot|anthropic-ai|PerplexityBot|Bytespider|TikTokSpider|Google-Extended|Google-NotebookLM|CloudVertexBot|FacebookBot|Meta-ExternalAgent|Meta-ExternalFetcher|DeepSeekBot|CCBot|Diffbot|Applebot-Extended|cohere-training-data-crawler|DataForSeoBot|FirecrawlAgent|KimiBot|v0Bot|xai-bot|YouBot|ChatGLM-Spider|HuggingFaceBot|TogetherBot|ReplicateBot|PetalBot|PanguBot|CoveoBot|Amazonbot|AI2Bot|Timpibot|Omgilibot)`)
 
 	// General search crawlers and social media preview bots.
-	searchAndSocialBotsRegex = regexp.MustCompile(`(?i)(Googlebot|bingbot|Baiduspider|YandexBot|DuckDuckBot|Slurp|Sogou|Exabot|Facebot|facebookexternalhit|Twitterbot|LinkedInBot|Slackbot|TelegramBot|WhatsApp|Discordbot|Pinterestbot|Applebot)`)
+	searchAndSocialBotsRegex = regexp.MustCompile(`(?i)(Googlebot|bingbot|bingpreview|Baiduspider|YandexBot|DuckDuckBot|Slurp|Sogou|Exabot|Facebot|facebookexternalhit|Twitterbot|LinkedInBot|Slackbot|TelegramBot|WhatsApp|Discordbot|Pinterest|Applebot|SemrushBot|AhrefsBot|MJ12bot|DotBot|screaming frog|seznambot|archive\.org_bot|ia_archiver)`)
 
 	// Automated CLI tools, libraries, and HTTP clients.
 	cliAndLibraryRegex = regexp.MustCompile(`(?i)(curl/|Wget/|python-requests|aiohttp|urllib|Go-http-client|node-fetch|axios/|PostmanRuntime|insomnia/|Apache-HttpClient|Java/|Ruby|PHP/|Scrapy|HeadlessChrome|PhantomJS)`)
@@ -23,6 +23,7 @@ var (
 // Known bot token substrings for high-speed early detection.
 var botSubstrings = []string{
 	"bot", "spider", "crawl", "slurp", "fetch", "archive", "scraper", "headless",
+	"bingpreview", "screaming frog", "facebookexternalhit",
 }
 
 // IsAICrawler reports whether the User-Agent belongs to an AI data crawler or search bot (e.g. GPTBot, ClaudeBot).
@@ -33,6 +34,16 @@ func IsAICrawler(ua string) bool {
 // IsAIAssistant reports whether the User-Agent belongs to a user-facing AI assistant (e.g. ChatGPT-User, Claude-Web).
 func IsAIAssistant(ua string) bool {
 	return aiAssistantsRegex.MatchString(ua)
+}
+
+// IsCrawler reports whether the User-Agent represents a known search spider, web crawler, or SEO bot
+// (Googlebot, Bingbot, BingPreview, Yandex, Baidu, Screaming Frog, FacebookExternalHit, GPTBot, ClaudeBot, etc.).
+// This function is ideal for crawler-bypass hooks to prevent spiders from polluting analytics funnels.
+func IsCrawler(ua string) bool {
+	if ua == "" {
+		return false
+	}
+	return searchAndSocialBotsRegex.MatchString(ua) || aiCrawlersRegex.MatchString(ua)
 }
 
 // IsBot reports whether the User-Agent belongs to any known bot, crawler, search engine, scraper, CLI tool, or AI agent.

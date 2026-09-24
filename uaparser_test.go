@@ -163,6 +163,13 @@ func TestParseDevices(t *testing.T) {
 			expectType:   DeviceMobile,
 		},
 		{
+			name:         "LG Mobile Phone",
+			ua:           "Mozilla/5.0 (Linux; U; Android 4.0.3; ko-kr; LG-L160L Build/IML74K) AppleWebkit/534.30",
+			expectVendor: "LG",
+			expectModel:  "LG-L160L",
+			expectType:   DeviceMobile,
+		},
+		{
 			name:         "Google Pixel 8",
 			ua:           "Mozilla/5.0 (Linux; Android 14; Pixel 8 Build/UD1A.230803.041) AppleWebKit/537.36 Mobile Safari/537.36",
 			expectVendor: "Google",
@@ -229,50 +236,76 @@ func TestClientHints(t *testing.T) {
 	}
 }
 
-func TestBotDetection(t *testing.T) {
+func TestBotAndCrawlerDetection(t *testing.T) {
 	tests := []struct {
-		ua           string
-		isBot        bool
-		isAICrawler  bool
+		ua            string
+		isBot         bool
+		isCrawler     bool
+		isAICrawler   bool
 		isAIAssistant bool
 	}{
 		{
 			ua:          "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
 			isBot:       true,
+			isCrawler:   true,
 			isAICrawler: false,
+		},
+		{
+			ua:        "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/534+ (KHTML, like Gecko) BingPreview/1.0b",
+			isBot:     true,
+			isCrawler: true,
+		},
+		{
+			ua:        "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
+			isBot:     true,
+			isCrawler: true,
+		},
+		{
+			ua:        "Screaming Frog SEO Spider/19.0",
+			isBot:     true,
+			isCrawler: true,
 		},
 		{
 			ua:          "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; GPTBot/1.2; +https://openai.com/gptbot)",
 			isBot:       true,
+			isCrawler:   true,
 			isAICrawler: true,
 		},
 		{
 			ua:          "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; ClaudeBot/1.0; +claudebot@anthropic.com)",
 			isBot:       true,
+			isCrawler:   true,
 			isAICrawler: true,
 		},
 		{
 			ua:            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36 (ChatGPT-User)",
 			isBot:         true,
+			isCrawler:     false,
 			isAIAssistant: true,
 		},
 		{
-			ua:    "curl/7.88.1",
-			isBot: true,
+			ua:        "curl/7.88.1",
+			isBot:     true,
+			isCrawler: false,
 		},
 		{
-			ua:    "Go-http-client/1.1",
-			isBot: true,
+			ua:        "Go-http-client/1.1",
+			isBot:     true,
+			isCrawler: false,
 		},
 		{
-			ua:    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-			isBot: false,
+			ua:        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+			isBot:     false,
+			isCrawler: false,
 		},
 	}
 
 	for _, tt := range tests {
 		if got := IsBot(tt.ua); got != tt.isBot {
 			t.Errorf("UA %q: expected IsBot=%v, got %v", tt.ua, tt.isBot, got)
+		}
+		if got := IsCrawler(tt.ua); got != tt.isCrawler {
+			t.Errorf("UA %q: expected IsCrawler=%v, got %v", tt.ua, tt.isCrawler, got)
 		}
 		if tt.isAICrawler && !IsAICrawler(tt.ua) {
 			t.Errorf("UA %q: expected IsAICrawler=true", tt.ua)
@@ -317,8 +350,17 @@ func TestEuropeTimezones(t *testing.T) {
 	}
 }
 
-func BenchmarkParseWithoutCache(b *testing.B) {
-	p := New(WithoutCache())
+func BenchmarkParseParallelWithoutCache(b *testing.B) {
+	p := New(WithoutCache(), WithParallel(true))
+	ua := "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+	b.ResetTimer()
+	for b.Loop() {
+		_ = p.Parse(ua)
+	}
+}
+
+func BenchmarkParseSequentialWithoutCache(b *testing.B) {
+	p := New(WithoutCache(), WithParallel(false))
 	ua := "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 	b.ResetTimer()
 	for b.Loop() {

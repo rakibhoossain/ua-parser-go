@@ -6,28 +6,78 @@ import (
 	"strings"
 )
 
-// Parse resolves a referrer URL into a recognized referral source.
+// Parse resolves a referrer URL into a recognized referral source and metadata.
 func Parse(rawURL string) *Result {
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
-		return &Result{}
+		return &Result{
+			Type: TypeDirect,
+		}
 	}
 
 	cleanURL := strings.TrimRight(rawURL, "/")
 	hostname := getHostname(cleanURL)
 	if hostname == "" {
-		return &Result{URL: cleanURL}
+		return &Result{
+			Name: cleanURL,
+			Type: TypeReferral,
+			URL:  cleanURL,
+		}
 	}
 
 	hostnameNoWWW := strings.TrimPrefix(hostname, "www.")
+
+	// 1. Exact domain lookup
 	entry, ok := Lookup(hostname)
 	if !ok {
 		entry, ok = Lookup(hostnameNoWWW)
 	}
 
+	// 2. Global search engine & social network prefix fallbacks (catches all international TLDs)
+	if !ok {
+		switch {
+		case strings.Contains(hostnameNoWWW, "google."):
+			entry = ReferrerEntry{Type: TypeSearch, Name: "Google"}
+			ok = true
+		case strings.Contains(hostnameNoWWW, "bing."):
+			entry = ReferrerEntry{Type: TypeSearch, Name: "Bing"}
+			ok = true
+		case strings.Contains(hostnameNoWWW, "duckduckgo."):
+			entry = ReferrerEntry{Type: TypeSearch, Name: "DuckDuckGo"}
+			ok = true
+		case strings.Contains(hostnameNoWWW, "yahoo."):
+			entry = ReferrerEntry{Type: TypeSearch, Name: "Yahoo"}
+			ok = true
+		case strings.Contains(hostnameNoWWW, "youtube.") || hostnameNoWWW == "youtu.be":
+			entry = ReferrerEntry{Type: TypeSocial, Name: "YouTube"}
+			ok = true
+		case strings.Contains(hostnameNoWWW, "facebook.") || hostnameNoWWW == "fb.com":
+			entry = ReferrerEntry{Type: TypeSocial, Name: "Facebook"}
+			ok = true
+		case strings.Contains(hostnameNoWWW, "twitter.") || hostnameNoWWW == "x.com" || hostnameNoWWW == "t.co":
+			entry = ReferrerEntry{Type: TypeSocial, Name: "X (Twitter)"}
+			ok = true
+		case strings.Contains(hostnameNoWWW, "instagram."):
+			entry = ReferrerEntry{Type: TypeSocial, Name: "Instagram"}
+			ok = true
+		case strings.Contains(hostnameNoWWW, "linkedin."):
+			entry = ReferrerEntry{Type: TypeSocial, Name: "LinkedIn"}
+			ok = true
+		case strings.Contains(hostnameNoWWW, "pinterest."):
+			entry = ReferrerEntry{Type: TypeSocial, Name: "Pinterest"}
+			ok = true
+		case strings.Contains(hostnameNoWWW, "tiktok."):
+			entry = ReferrerEntry{Type: TypeSocial, Name: "TikTok"}
+			ok = true
+		}
+	}
+
 	domain := hostnameNoWWW
 	if !ok {
+		// Unknown external referrer
 		return &Result{
+			Name:       domain,
+			Type:       TypeReferral,
 			Domain:     domain,
 			URL:        cleanURL,
 			FaviconURL: FaviconURL(domain),
@@ -43,7 +93,7 @@ func Parse(rawURL string) *Result {
 	}
 }
 
-// ParseWithQuery extracts referral information from UTM or query parameters (e.g. utm_source, ref, utm_referrer).
+// ParseWithQuery extracts referral and UTM marketing campaign parameters.
 func ParseWithQuery(query map[string]string) *Result {
 	if len(query) == 0 {
 		return nil
@@ -57,54 +107,83 @@ func ParseWithQuery(query map[string]string) *Result {
 		}
 	}
 
+	medium := strings.ToLower(strings.TrimSpace(query["utm_medium"]))
+	campaign := strings.TrimSpace(query["utm_campaign"])
+	content := strings.TrimSpace(query["utm_content"])
+	term := strings.TrimSpace(query["utm_term"])
+
 	if source == "" {
+		if medium != "" || campaign != "" {
+			return &Result{
+				Type:     classifyMedium(medium),
+				Medium:   medium,
+				Campaign: campaign,
+				Content:  content,
+				Term:     term,
+			}
+		}
 		return nil
+	}
+
+	res := &Result{
+		Medium:   medium,
+		Campaign: campaign,
+		Content:  content,
+		Term:     term,
 	}
 
 	// 1. Direct domain match
 	if entry, ok := Lookup(source); ok {
-		return &Result{
-			Name:       entry.Name,
-			Type:       entry.Type,
-			Domain:     source,
-			FaviconURL: FaviconURL(source),
-		}
+		res.Name = entry.Name
+		res.Type = entry.Type
+		res.Domain = source
+		res.FaviconURL = FaviconURL(source)
+	} else if entry, ok := Lookup(source + ".com"); ok { // 2. Try with .com suffix
+		res.Name = entry.Name
+		res.Type = entry.Type
+		res.Domain = source + ".com"
+		res.FaviconURL = FaviconURL(source + ".com")
+	} else if entry, domain, ok := LookupByName(source); ok { // 3. Match against known source names
+		res.Name = entry.Name
+		res.Type = entry.Type
+		res.Domain = domain
+		res.FaviconURL = FaviconURL(domain)
+	} else { // 4. Fallback to custom source
+		res.Name = source
+		res.Type = TypeReferral
+		res.Domain = source
+		res.FaviconURL = FaviconURL(source)
 	}
 
-	// 2. Try with .com suffix
-	withCom := source + ".com"
-	if entry, ok := Lookup(withCom); ok {
-		return &Result{
-			Name:       entry.Name,
-			Type:       entry.Type,
-			Domain:     withCom,
-			FaviconURL: FaviconURL(withCom),
-		}
+	// If utm_medium specifies a more specific classification, override Type
+	if mediumType := classifyMedium(medium); mediumType != TypeUnknown {
+		res.Type = mediumType
 	}
 
-	// 3. Match against known source names (e.g. "google", "twitter", "chatgpt")
-	if entry, domain, ok := LookupByName(source); ok {
-		return &Result{
-			Name:       entry.Name,
-			Type:       entry.Type,
-			Domain:     domain,
-			FaviconURL: FaviconURL(domain),
-		}
-	}
+	return res
+}
 
-	// 4. Fallback to custom source
-	return &Result{
-		Name:       source,
-		Type:       TypeUnknown,
-		Domain:     source,
-		FaviconURL: FaviconURL(source),
+func classifyMedium(medium string) ReferrerType {
+	if medium == "" {
+		return TypeUnknown
+	}
+	switch {
+	case strings.Contains(medium, "cpc") || strings.Contains(medium, "ppc") ||
+		strings.Contains(medium, "paid") || strings.Contains(medium, "ad"):
+		return TypePaid
+	case strings.Contains(medium, "social"):
+		return TypeSocial
+	case strings.Contains(medium, "email") || strings.Contains(medium, "newsletter"):
+		return TypeEmail
+	default:
+		return TypeUnknown
 	}
 }
 
 // ParseRequest inspects an HTTP request for both the Referer header and UTM query parameters.
 func ParseRequest(r *http.Request) *Result {
 	if r == nil {
-		return &Result{}
+		return &Result{Type: TypeDirect}
 	}
 
 	// 1. First, check UTM query parameters for campaign attribution

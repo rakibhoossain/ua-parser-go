@@ -23,9 +23,17 @@ func WithoutCache() Option {
 	}
 }
 
+// WithParallel enables or disables parallel evaluation of regex matcher passes.
+func WithParallel(enabled bool) Option {
+	return func(p *Parser) {
+		p.parallel = enabled
+	}
+}
+
 // Parser parses User-Agent strings and Client Hints into structured results.
 type Parser struct {
-	cache Cacher
+	cache    Cacher
+	parallel bool
 }
 
 // DefaultParser is the global thread-safe Parser instance configured with a 10,000 entry sharded LRU cache.
@@ -34,10 +42,13 @@ var (
 	defaultParserOnce     sync.Once
 )
 
-// DefaultParser returns the global singleton Parser.
+// Default returns the global singleton Parser.
 func Default() *Parser {
 	defaultParserOnce.Do(func() {
-		defaultParserInstance = New(WithCache(NewShardedLRU(10000)))
+		defaultParserInstance = New(
+			WithCache(NewShardedLRU(10000)),
+			WithParallel(true),
+		)
 	})
 	return defaultParserInstance
 }
@@ -45,7 +56,8 @@ func Default() *Parser {
 // New creates a new Parser with the supplied options.
 func New(opts ...Option) *Parser {
 	p := &Parser{
-		cache: NewShardedLRU(5000),
+		cache:    NewShardedLRU(5000),
+		parallel: true,
 	}
 	for _, opt := range opts {
 		opt(p)
@@ -84,6 +96,7 @@ func (p *Parser) Parse(ua string) *Result {
 }
 
 // ParseWithClientHints parses a User-Agent string and merges Client Hints (Sec-CH-UA-*).
+// Matcher passes (Browser, OS, Device, Engine, CPU) can run in parallel across CPU cores.
 func (p *Parser) ParseWithClientHints(ua string, ch ClientHints) *Result {
 	ua = strings.TrimSpace(ua)
 	if ua == "" {
@@ -104,44 +117,39 @@ func (p *Parser) ParseWithClientHints(ua string, ch ClientHints) *Result {
 		IsBot:       IsBot(ua),
 	}
 
-	// 1. Parse Browser
-	for _, rule := range browserRules {
-		if matches := rule.regex.FindStringSubmatch(ua); len(matches) > 0 {
-			res.Browser = rule.handler(matches)
-			break
-		}
-	}
+	// 1-5. Match Browser, OS, Device, Engine, CPU
+	if p.parallel {
+		var wg sync.WaitGroup
+		wg.Add(5)
 
-	// 2. Parse OS
-	for _, rule := range osRules {
-		if matches := rule.regex.FindStringSubmatch(ua); len(matches) > 0 {
-			res.OS = rule.handler(matches)
-			break
-		}
-	}
+		go func() {
+			defer wg.Done()
+			res.Browser = matchBrowser(ua)
+		}()
+		go func() {
+			defer wg.Done()
+			res.OS = matchOS(ua)
+		}()
+		go func() {
+			defer wg.Done()
+			res.Device = matchDevice(ua)
+		}()
+		go func() {
+			defer wg.Done()
+			res.Engine = matchEngine(ua)
+		}()
+		go func() {
+			defer wg.Done()
+			res.CPU = matchCPU(ua)
+		}()
 
-	// 3. Parse Device
-	for _, rule := range deviceRules {
-		if matches := rule.regex.FindStringSubmatch(ua); len(matches) > 0 {
-			res.Device = rule.handler(matches)
-			break
-		}
-	}
-
-	// 4. Parse Engine
-	for _, rule := range engineRules {
-		if matches := rule.regex.FindStringSubmatch(ua); len(matches) > 0 {
-			res.Engine = rule.handler(matches)
-			break
-		}
-	}
-
-	// 5. Parse CPU
-	for _, rule := range cpuRules {
-		if matches := rule.regex.FindStringSubmatch(ua); len(matches) > 0 {
-			res.CPU = rule.handler(matches)
-			break
-		}
+		wg.Wait()
+	} else {
+		res.Browser = matchBrowser(ua)
+		res.OS = matchOS(ua)
+		res.Device = matchDevice(ua)
+		res.Engine = matchEngine(ua)
+		res.CPU = matchCPU(ua)
 	}
 
 	// 6. Handle App-Style UA formatting (e.g. Model=Redmi Note 8 Pro; Manufacturer=Xiaomi)

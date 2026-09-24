@@ -467,6 +467,13 @@ func initDeviceRules() {
 				return Device{Vendor: "Samsung", Model: m[1], Type: DeviceMobile}
 			},
 		},
+		// LG Mobile
+		{
+			regex: regexp.MustCompile(`(?i)\b(lg-[a-z0-9]+)\b`),
+			handler: func(m []string) Device {
+				return Device{Vendor: "LG", Model: m[1], Type: DeviceMobile}
+			},
+		},
 		// Google Pixel
 		{
 			regex: regexp.MustCompile(`(?i)\b(pixel(?:\s+[0-9a-z]+)?)(?:\s+build|[;\)])`),
@@ -589,4 +596,49 @@ func initCPURules() {
 			},
 		},
 	}
+}
+
+func matchBrowser(ua string) Browser {
+	for _, rule := range browserRules {
+		if matches := rule.regex.FindStringSubmatch(ua); len(matches) > 0 {
+			return rule.handler(matches)
+		}
+	}
+	return Browser{}
+}
+
+func matchOS(ua string) OS {
+	for _, rule := range osRules {
+		if matches := rule.regex.FindStringSubmatch(ua); len(matches) > 0 {
+			return rule.handler(matches)
+		}
+	}
+	return OS{}
+}
+
+func matchDevice(ua string) Device {
+	for _, rule := range deviceRules {
+		if matches := rule.regex.FindStringSubmatch(ua); len(matches) > 0 {
+			return rule.handler(matches)
+		}
+	}
+	return Device{}
+}
+
+func matchEngine(ua string) Engine {
+	for _, rule := range engineRules {
+		if matches := rule.regex.FindStringSubmatch(ua); len(matches) > 0 {
+			return rule.handler(matches)
+		}
+	}
+	return Engine{}
+}
+
+func matchCPU(ua string) CPU {
+	for _, rule := range cpuRules {
+		if matches := rule.regex.FindStringSubmatch(ua); len(matches) > 0 {
+			return rule.handler(matches)
+		}
+	}
+	return CPU{}
 }
