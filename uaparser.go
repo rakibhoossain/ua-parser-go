@@ -115,6 +115,7 @@ func (p *Parser) ParseWithClientHints(ua string, ch ClientHints) *Result {
 		ClientHints: ch,
 		IsFrozen:    IsFrozenUA(ua),
 		IsBot:       IsBot(ua),
+		Bot:         DetectBot(ua),
 	}
 
 	// 1-5. Match Browser, OS, Device, Engine, CPU

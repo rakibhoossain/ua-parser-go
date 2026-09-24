@@ -1,5 +1,7 @@
 package uaparser
 
+import "github.com/rakibhoossain/ua-parser-go/bots"
+
 // DeviceType represents the general category of the client hardware.
 type DeviceType string
 
@@ -82,14 +84,15 @@ type Brand struct {
 
 // Result is the consolidated parsed output representing all detected details.
 type Result struct {
-	UA          string      `json:"ua"`
-	Browser     Browser     `json:"browser"`
-	OS          OS          `json:"os"`
-	Device      Device      `json:"device"`
-	Engine      Engine      `json:"engine"`
-	CPU         CPU         `json:"cpu"`
-	ClientHints ClientHints `json:"client_hints,omitempty"`
-	IsBot       bool        `json:"is_bot"`
-	IsServer    bool        `json:"is_server"`
-	IsFrozen    bool        `json:"is_frozen"`
+	UA          string         `json:"ua"`
+	Browser     Browser        `json:"browser"`
+	OS          OS             `json:"os"`
+	Device      Device         `json:"device"`
+	Engine      Engine         `json:"engine"`
+	CPU         CPU            `json:"cpu"`
+	ClientHints ClientHints    `json:"client_hints,omitempty"`
+	IsBot       bool           `json:"is_bot"`
+	Bot         *bots.BotMatch `json:"bot,omitempty"`
+	IsServer    bool           `json:"is_server"`
+	IsFrozen    bool           `json:"is_frozen"`
 }

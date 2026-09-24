@@ -2,7 +2,8 @@ package uaparser
 
 import (
 	"regexp"
-	"strings"
+
+	"github.com/rakibhoossain/ua-parser-go/bots"
 )
 
 // Pre-compiled regex patterns for AI Crawlers, AI Assistants, and General Bots.
@@ -20,10 +21,25 @@ var (
 	cliAndLibraryRegex = regexp.MustCompile(`(?i)(curl/|Wget/|python-requests|aiohttp|urllib|Go-http-client|node-fetch|axios/|PostmanRuntime|insomnia/|Apache-HttpClient|Java/|Ruby|PHP/|Scrapy|HeadlessChrome|PhantomJS)`)
 )
 
-// Known bot token substrings for high-speed early detection.
-var botSubstrings = []string{
-	"bot", "spider", "crawl", "slurp", "fetch", "archive", "scraper", "headless",
-	"bingpreview", "screaming frog", "facebookexternalhit",
+// DetectBot identifies the User-Agent using both high-speed token lookups and regex patterns,
+// returning detailed bot metadata (name, category, producer, url) or nil if not a bot.
+func DetectBot(ua string) *bots.BotMatch {
+	if ua == "" {
+		return nil
+	}
+	if b := bots.DetectBot(ua); b != nil {
+		return b
+	}
+	if IsAICrawler(ua) {
+		return &bots.BotMatch{Name: "AI Crawler", Category: "AI Crawler"}
+	}
+	if IsAIAssistant(ua) {
+		return &bots.BotMatch{Name: "AI Assistant", Category: "AI Assistant"}
+	}
+	if cliAndLibraryRegex.MatchString(ua) {
+		return &bots.BotMatch{Name: "HTTP Client / CLI", Category: "Library"}
+	}
+	return nil
 }
 
 // IsAICrawler reports whether the User-Agent belongs to an AI data crawler or search bot (e.g. GPTBot, ClaudeBot).
@@ -43,7 +59,15 @@ func IsCrawler(ua string) bool {
 	if ua == "" {
 		return false
 	}
-	return searchAndSocialBotsRegex.MatchString(ua) || aiCrawlersRegex.MatchString(ua)
+	return bots.IsCrawler(ua) || searchAndSocialBotsRegex.MatchString(ua) || aiCrawlersRegex.MatchString(ua)
+}
+
+// IsSearchBot reports whether the User-Agent is explicitly a search engine bot.
+func IsSearchBot(ua string) bool {
+	if ua == "" {
+		return false
+	}
+	return bots.IsSearchBot(ua) || searchAndSocialBotsRegex.MatchString(ua)
 }
 
 // IsBot reports whether the User-Agent belongs to any known bot, crawler, search engine, scraper, CLI tool, or AI agent.
@@ -51,16 +75,9 @@ func IsBot(ua string) bool {
 	if ua == "" {
 		return false
 	}
-
-	// Fast path check using lowercase tokens
-	lower := strings.ToLower(ua)
-	for _, sub := range botSubstrings {
-		if strings.Contains(lower, sub) {
-			return true
-		}
+	if bots.IsBot(ua) {
+		return true
 	}
-
-	// Regex check for AI agents, crawlers, CLI tools, and libraries
 	return aiCrawlersRegex.MatchString(ua) ||
 		aiAssistantsRegex.MatchString(ua) ||
 		searchAndSocialBotsRegex.MatchString(ua) ||
