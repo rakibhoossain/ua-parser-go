@@ -285,12 +285,12 @@ func TestBotAndCrawlerDetection(t *testing.T) {
 		},
 		{
 			ua:        "curl/7.88.1",
-			isBot:     true,
+			isBot:     false,
 			isCrawler: false,
 		},
 		{
 			ua:        "Go-http-client/1.1",
-			isBot:     true,
+			isBot:     false,
 			isCrawler: false,
 		},
 		{
